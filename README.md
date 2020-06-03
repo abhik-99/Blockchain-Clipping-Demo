@@ -4,9 +4,12 @@ Designing a Blockchain with Python
 
 **Block**: A block is a unique record in the blockchain which contains transactions, timestamp, index, hash, etc. broadly 3 types of Blocks :
 
-  - ### Genesis Block: First Block in the Blockchain.
-  - ### Current Block: Last Block in the Blockchain.
-  - ### Orphan Block: Valid Block which is not part of the main chain. They can occur naturally when two miners produce blocks at similar times or they can be caused by an attacker (with enough hashing power) attempting to reverse transactions.
+  - ### Genesis Block: 
+  First Block in the Blockchain.
+  - ### Current Block: 
+  Last Block in the Blockchain.
+  - ### Orphan Block: 
+  Valid Block which is not part of the main chain. They can occur naturally when two miners produce blocks at similar times or they can be caused by an attacker (with enough hashing power) attempting to reverse transactions.
   
 **Mining**: Method of creating new Block.
 
