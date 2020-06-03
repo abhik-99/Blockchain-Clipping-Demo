@@ -3,8 +3,9 @@ import json
 from time import time
 from uuid import uuid4
 from urllib.parse import urlparse
+import requests
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, url_for, request
 
 class Block(object):
 
@@ -159,91 +160,101 @@ class BlockChain(object):
             timestamp=block_data['timestamp']
         )
 
-    # initiation of the node
 app = Flask(__name__)
 
-# generation of globally unique address 
-node_identifier = str(uuid4()).replace('-', '')
-
-# initiate the Blockchain
 blockchain = BlockChain()
 
-@app.route('/mine', methods=['GET'])
-def mine():
+node_address = uuid4().hex  # Unique address for current node
 
-    # first the PoW algorithm will run to find the new proof
-    last_block = blockchain.last_block
-    last_proof = get_last_block['proof']
-    proof = blockchain.create_proof_of_work(last_proof)
-
-    # 1 coin is added as a reqard for mining
-    blockchain.create_new_transaction(
-        sender=0,
-        recipient=node_identifier,
-        amount=1,
-    )
-
-    # forge the new block by adding it to the chain
-    previous_hash = blockchain.get_block_hash(last_block)
-    block = blockchain.create_new_block(proof, previous_hash)
-
-    response = {
-        'message': "Forged new block.",
-        'index': block['index'],
-        'transactions': block['transactions'],
-        'proof': block['proof'],
-        'previous_hash': block['previous_hash'],
+@app.route('/create-transaction', methods=['POST'])
+def create_transaction():
+    """
+    Input Payload:
+    {
+        "sender": "address_1"
+        "recipient": "address_2",
+        "amount": 3
     }
-    return jsonify(response, 200)
+    """
+    transaction_data = request.get_json()
 
-@app.route('/transaction/new', methods=['GET'])
-def create_new_transaction():
-
-    values = request.get_json()
-    required = ['sender', 'recipient', 'amont']
-
-    if not all(k in values for k in required):
-        return 'Missing values.', 400
-
-    # create a new transaction
-    index = blockchain.create_new_transaction(
-        sender = values['sender'],
-        recipient = values['recipient'],
-        amount = values['amount']
-    )
+    index = blockchain.create_new_transaction(**transaction_data)
 
     response = {
-        'message': f'Transaction will be added to the Block {index}',
-    }
-    return jsonify(response, 200)
-
-@app.route('/chain', methods=['GET'])
-def is_valid_chain():
-    response = {
-        'chain': blockchain.chain,
-        'length': len(blockchain.chain),
-    }
-    return jsonify(response), 200
-
-@app.route('/nodes/register', methods=['POST'])
-def create_node():
-    values = request.get_json()
-
-    print('values',values)
-    nodes = values.get('nodes')
-    if nodes is None:
-        return "Error: Please supply a valid list of nodes", 400
-
-    # register each newly added node
-    for node in nodes: blockchain.register_node(node)
-
-    response = {
-        'message': "New nodes have been added",
-        'all_nodes': list(blockchain.nodes),
+        'message': 'Transaction has been submitted successfully',
+        'block_index': index
     }
 
     return jsonify(response), 201
 
+@app.route('/mine', methods=['GET'])
+def mine():
+    block = blockchain.mine_block(node_address)
+
+    response = {
+        'message': 'Successfully Mined the new Block',
+        'block_data': block
+    }
+    return jsonify(response)
+
+@app.route('/chain', methods=['GET'])
+def get_full_chain():
+    response = {
+        'chain': blockchain.get_serialized_chain
+    }
+    return jsonify(response)
+
+@app.route('/register-node', methods=['POST'])
+def register_node():
+
+    node_data = request.get_json()
+
+    blockchain.create_node(node_data.get('address'))
+
+    response = {
+        'message': 'New node has been added',
+        'node_count': len(blockchain.nodes),
+        'nodes': list(blockchain.nodes),
+    }
+    return jsonify(response), 201
+
+
+@app.route('/sync-chain', methods=['GET'])
+def consensus():
+
+    def get_neighbour_chains():
+        neighbour_chains = []
+        for node_address in blockchain.nodes:
+            resp = requests.get(node_address + url_for('get_full_chain')).json()
+            chain = resp['chain']
+            neighbour_chains.append(chain)
+        return neighbour_chains
+
+    neighbour_chains = get_neighbour_chains()
+    if not neighbour_chains:
+        return jsonify({'message': 'No neighbour chain is available'})
+
+    longest_chain = max(neighbour_chains, key=len)  # Get the longest chain
+
+    if len(blockchain.chain) >= len(longest_chain):  # If our chain is longest, then do nothing
+        response = {
+            'message': 'Chain is already up to date',
+            'chain': blockchain.get_serialized_chain
+        }
+    else:  # If our chain isn't longest, then we store the longest chain
+        blockchain.chain = [blockchain.get_block_object_from_block_data(block) for block in longest_chain]
+        response = {
+            'message': 'Chain was replaced',
+            'chain': blockchain.get_serialized_chain
+        }
+
+    return jsonify(response)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('-H', '--host', default='127.0.0.1')
+    parser.add_argument('-p', '--port', default=5000, type=int)
+    args = parser.parse_args()
+
+    app.run(host=args.host, port=args.port, debug=True)
